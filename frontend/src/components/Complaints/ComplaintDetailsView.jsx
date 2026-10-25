@@ -71,6 +71,8 @@ export const ComplaintDetailsView = ({ complaint, showStudentInfo = false }) => 
       </Card>
 
       <StatusTimeline complaint={complaint} />
+      {complaint.reopenReason && <Card className="p-5"><p className="text-sm font-semibold text-amber-700">Reopened complaint</p><p className="mt-2 text-sm text-slate-700">{complaint.reopenReason}</p></Card>}
+      {complaint.feedbackRating != null && <Card className="p-5"><p className="text-sm font-semibold text-slate-900">Student feedback: {complaint.feedbackRating}/5 stars</p><p className="mt-2 text-sm text-slate-700">{complaint.feedbackComment || 'No additional comment'}</p></Card>}
     </div>
 
     <div className="space-y-6">

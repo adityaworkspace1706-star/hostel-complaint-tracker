@@ -4,6 +4,7 @@ import { getPriorityForIssue } from '../constants/complaints.js';
 import { nextComplaintIdFromMax } from '../utils/complaintId.js';
 import { buildPaginationMeta, parsePagination } from '../utils/pagination.js';
 import { validateComplaintUpdateData } from '../utils/validation.js';
+import { validateFeedback, validateReopen } from '../utils/complaintActions.js';
 
 const POPULATE_STUDENT = 'name email hostel room';
 
@@ -226,4 +227,48 @@ export const deleteComplaint = async (req, res, next) => {
   } catch (error) {
     next(error);
   }
+};
+
+/** Only the complaint owner may review or reopen a resolved complaint. */
+const findOwnedResolved = async (req) => {
+  if (req.user.role !== 'student') throw ApiError.forbidden('Students only');
+  const complaint = await Complaint.findById(req.params.id);
+  if (!complaint) throw ApiError.notFound('Complaint not found');
+  if (String(ownerOf(complaint)) !== String(req.user._id)) throw ApiError.forbidden('Not authorized');
+  if (complaint.status !== 'resolved') throw ApiError.badRequest('Complaint must be resolved');
+  return complaint;
+};
+
+export const submitFeedback = async (req, res, next) => {
+  try {
+    const { rating, comment = '' } = req.body ?? {};
+    const validationError = validateFeedback({ rating, comment });
+    if (validationError) throw ApiError.badRequest(validationError);
+    const complaint = await findOwnedResolved(req);
+    if (complaint.feedbackRating != null) throw ApiError.badRequest('Feedback already submitted');
+    complaint.feedbackRating = rating;
+    complaint.feedbackComment = comment.trim();
+    await complaint.save();
+    await complaint.populate('studentId', POPULATE_STUDENT);
+    res.json({ success: true, data: { complaint: serialize(complaint) } });
+  } catch (error) { next(error); }
+};
+
+export const reopenComplaint = async (req, res, next) => {
+  try {
+    const { reason } = req.body ?? {};
+    const validationError = validateReopen({ reason });
+    if (validationError) throw ApiError.badRequest(validationError);
+    const complaint = await findOwnedResolved(req);
+    complaint.status = 'pending';
+    complaint.resolvedAt = null;
+    complaint.reopenedAt = new Date();
+    complaint.reopenReason = reason.trim();
+    // Clear feedback for the new resolution cycle.
+    complaint.feedbackRating = null;
+    complaint.feedbackComment = '';
+    await complaint.save();
+    await complaint.populate('studentId', POPULATE_STUDENT);
+    res.json({ success: true, data: { complaint: serialize(complaint) } });
+  } catch (error) { next(error); }
 };

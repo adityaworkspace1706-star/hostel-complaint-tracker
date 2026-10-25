@@ -379,3 +379,44 @@ export async function getAnalytics() {
     },
   });
 }
+
+const ownedResolved = (token, id) => {
+  const db = readDb();
+  const userId = tokenUserId(token);
+  const user = db.users.find(u => u._id === userId);
+  if (!user || user.role !== 'student') throw fail(403, 'Students only');
+  const complaint = db.complaints.find(c => c._id === id);
+  if (!complaint) throw fail(404, 'Complaint not found');
+  if (complaint.studentId !== userId) throw fail(403, 'Not authorized');
+  if (complaint.status !== 'resolved') throw fail(400, 'Complaint must be resolved');
+  return { db, complaint };
+};
+
+export async function submitFeedback(token, id, { rating, comment = '' } = {}) {
+  await delay();
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5 || typeof comment !== 'string' || comment.length > 500)
+    throw fail(400, 'Rating must be 1–5 and comment at most 500 characters');
+  const { db, complaint } = ownedResolved(token, id);
+  if (complaint.feedbackRating != null) throw fail(400, 'Feedback already submitted');
+  complaint.feedbackRating = rating;
+  complaint.feedbackComment = comment.trim();
+  complaint.updatedAt = new Date().toISOString();
+  writeDb(db);
+  return ok('Feedback saved', { complaint });
+}
+
+export async function reopenComplaint(token, id, { reason } = {}) {
+  await delay();
+  if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500)
+    throw fail(400, 'Reopen reason must be 1–500 characters');
+  const { db, complaint } = ownedResolved(token, id);
+  complaint.status = 'pending';
+  complaint.resolvedAt = null;
+  complaint.reopenedAt = new Date().toISOString();
+  complaint.reopenReason = reason.trim();
+  complaint.feedbackRating = null;
+  complaint.feedbackComment = '';
+  complaint.updatedAt = new Date().toISOString();
+  writeDb(db);
+  return ok('Complaint reopened', { complaint });
+}

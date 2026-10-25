@@ -55,6 +55,10 @@ const complaintSchema = new mongoose.Schema(
       type: [String],
       default: [],
     },
+    feedbackRating: { type: Number, min: 1, max: 5, default: null },
+    feedbackComment: { type: String, maxlength: 500, default: '' },
+    reopenedAt: { type: Date, default: null },
+    reopenReason: { type: String, maxlength: 500, default: '' },
     resolvedAt: {
       type: Date,
       default: null,

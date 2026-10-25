@@ -131,6 +131,14 @@ export const complaintService = {
       return data.data;
     }),
 
+  feedback: (id, payload) => unwrap(async () => {
+    if (USE_MOCK) return (await mock.submitFeedback(localStorage.getItem('hct_token'), id, payload)).data;
+    return (await http.post(`/complaints/${id}/feedback`, payload)).data.data;
+  }),
+  reopen: (id, payload) => unwrap(async () => {
+    if (USE_MOCK) return (await mock.reopenComplaint(localStorage.getItem('hct_token'), id, payload)).data;
+    return (await http.post(`/complaints/${id}/reopen`, payload)).data.data;
+  }),
   remove: (id) =>
     unwrap(async () => {
       if (USE_MOCK) {
