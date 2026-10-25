@@ -4,6 +4,7 @@ import { getPriorityForIssue } from '../constants/complaints.js';
 import { nextComplaintIdFromMax } from '../utils/complaintId.js';
 import { buildPaginationMeta, parsePagination } from '../utils/pagination.js';
 import { validateComplaintUpdateData } from '../utils/validation.js';
+import { validateFeedback, validateReopen } from '../utils/complaintActions.js';
 
 const POPULATE_STUDENT = 'name email hostel room';
 
@@ -241,10 +242,8 @@ const findOwnedResolved = async (req) => {
 export const submitFeedback = async (req, res, next) => {
   try {
     const { rating, comment = '' } = req.body ?? {};
-    if (!Number.isInteger(rating) || rating < 1 || rating > 5 ||
-        typeof comment !== 'string' || comment.length > 500) {
-      throw ApiError.badRequest('Rating must be 1–5 and comment at most 500 characters');
-    }
+    const validationError = validateFeedback({ rating, comment });
+    if (validationError) throw ApiError.badRequest(validationError);
     const complaint = await findOwnedResolved(req);
     if (complaint.feedbackRating != null) throw ApiError.badRequest('Feedback already submitted');
     complaint.feedbackRating = rating;
@@ -258,9 +257,8 @@ export const submitFeedback = async (req, res, next) => {
 export const reopenComplaint = async (req, res, next) => {
   try {
     const { reason } = req.body ?? {};
-    if (typeof reason !== 'string' || !reason.trim() || reason.trim().length > 500) {
-      throw ApiError.badRequest('Reopen reason must be 1–500 characters');
-    }
+    const validationError = validateReopen({ reason });
+    if (validationError) throw ApiError.badRequest(validationError);
     const complaint = await findOwnedResolved(req);
     complaint.status = 'pending';
     complaint.resolvedAt = null;
