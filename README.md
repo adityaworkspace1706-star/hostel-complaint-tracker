@@ -1,6 +1,6 @@
 # 🏠 HostelCare — Hostel Complaint Tracker
 
-> A full-stack web application for managing hostel complaints with role-based access, automatic prioritization, and analytics.
+> A full-stack web application for managing hostel complaints with role-based access, automatic prioritization, analytics, student feedback, and complaint reopening.
 
 ---
 
@@ -91,7 +91,9 @@ management system.
 | Photo Attachment | Optional image upload with complaints |
 | Complaint History | View all own complaints with status, timeline, and manager comments |
 | Search & Filter | Search, filter by status/priority/category, and sort own complaints |
-| Status Tracking | Real-time visibility into complaint lifecycle |
+| Status Tracking | Visibility into complaint lifecycle |
+| Resolution Feedback | Rate an owned resolved complaint from **1–5 stars** and optionally leave a comment (up to 500 characters) |
+| Reopen Resolved Complaint | Reopen an owned resolved complaint with a required reason (1–500 characters); status returns to `pending` |
 
 ### Manager Features
 | Feature | Description |
@@ -104,6 +106,8 @@ management system.
 | Assignment | Assign complaints to specific staff members |
 | Student Directory | View all registered students with per-student complaint statistics |
 | Analytics | Category breakdowns, status distribution, priority charts, top issues, resolution stats |
+| Student Feedback Visibility | View students’ ratings and optional comments on resolved complaints |
+| Reopening Visibility | View the reason and timestamp when a student reopens a complaint |
 
 ### Platform Features
 | Feature | Description |
@@ -248,6 +252,7 @@ hostel-complaint-tracker/
 │   ├── utils/
 │   │   ├── complaintId.js           # Duplicate-safe CMP-#### generation
 │   │   ├── pagination.js            # Optional page/limit parsing
+│   │   ├── complaintActions.js      # Feedback/reopen validation and eligibility
 │   │   ├── seedManager.js           # Create/repair initial manager account
 │   │   └── validation.js            # Pure input-validation helpers
 │   ├── tests/                       # node --test suites (unit + API integration)
@@ -296,6 +301,10 @@ hostel-complaint-tracker/
 | `managerComment` | String | optional | Manager's update/note for the student |
 | `assignedTo` | String | optional | Name of assigned staff member |
 | `resolvedAt` | Date | optional | Timestamp when complaint was resolved |
+| `feedbackRating` | Number | nullable, 1–5 | Student rating after resolution |
+| `feedbackComment` | String | optional, max 500 characters | Student's optional feedback comment |
+| `reopenedAt` | Date | nullable | Timestamp of student reopening |
+| `reopenReason` | String | max 500 characters | Reason supplied when reopening |
 | `createdAt` | Date | auto (timestamps) | Complaint filing time |
 | `updatedAt` | Date | auto (timestamps) | Last modification time |
 
@@ -343,6 +352,52 @@ When a student selects a category and issue, the priority is automatically deriv
 
 ---
 
+## ⭐ Resolution Feedback and Student Reopening
+
+These two features are available on the **student complaint details** page after a complaint has been marked `resolved`. They work in both the real MongoDB API and the frontend mock mode.
+
+### Feedback and rating
+
+1. A manager marks a complaint `resolved`.
+2. The student who created it opens its details page, selects an **integer rating from 1 to 5**, and optionally enters a comment (maximum **500 characters**).
+3. The frontend calls `POST /api/complaints/:id/feedback`; the backend checks authentication, ownership, resolved status, and input validity before saving `feedbackRating` and `feedbackComment`.
+4. The manager can read the saved rating and comment in the complaint details.
+
+### Reopening a resolved complaint
+
+1. The student opens their own resolved complaint and supplies a **required reason of 1–500 characters**.
+2. The frontend calls `POST /api/complaints/:id/reopen`; the backend checks authentication, ownership, status, and the reason.
+3. The complaint returns to `pending`, `resolvedAt` is cleared, and `reopenedAt` and `reopenReason` are stored.
+4. Previous resolution feedback is cleared for the new resolution cycle. The manager can see the reopening information and continue working on the complaint.
+
+**Authorization:** These endpoints are for the student who owns the complaint, not other students. Both require a valid JWT; only resolved complaints are eligible. Invalid requests receive API errors.
+
+**API requests:**
+
+```http
+POST /api/complaints/:id/feedback
+Authorization: Bearer <student-jwt>
+Content-Type: application/json
+
+{"rating":5,"comment":"Issue fixed promptly"}
+```
+
+```http
+POST /api/complaints/:id/reopen
+Authorization: Bearer <student-jwt>
+Content-Type: application/json
+
+{"reason":"The water leak has started again"}
+```
+
+**Implementation files:** `backend/models/Complaint.js`, `backend/controllers/complaintController.js`, `backend/routes/complaintRoutes.js`, `backend/utils/complaintActions.js`, `frontend/src/pages/student/StudentComplaintDetails.jsx`, `frontend/src/components/Complaints/ComplaintDetailsView.jsx`, `frontend/src/services/api.js`, and `frontend/src/services/mockApi.js`.
+
+### Verify the new features
+
+Run `cd backend && npm test` for the backend checks, and `cd frontend && npm run build` for the frontend build. The new validation tests are in `backend/tests/complaintActions.test.js`. For an end-to-end manual check, create a complaint as a student, resolve it as a manager, then log back in as that student to submit feedback and reopen it. Verify that the manager sees the rating/comment and the reopening reason. Repeat with `VITE_USE_MOCK=true` and `VITE_USE_MOCK=false`.
+
+---
+
 ## 📡 API Endpoints
 
 All API responses follow a consistent envelope format:
@@ -354,6 +409,13 @@ All API responses follow a consistent envelope format:
 // Error
 { "success": false, "message": "Error description" }
 ```
+
+### Student resolution actions (`/api/complaints`)
+
+| Method | Endpoint | Access | Description |
+|--------|----------|--------|-------------|
+| `POST` | `/api/complaints/:id/feedback` | Authenticated student owner, resolved complaint | Body: `{ "rating": 1..5, "comment": "optional" }` |
+| `POST` | `/api/complaints/:id/reopen` | Authenticated student owner, resolved complaint | Body: `{ "reason": "required" }`; sets status to `pending` |
 
 ### Authentication (`/api/auth`)
 
@@ -767,6 +829,8 @@ walking through it in a browser. **Run the checklist in both modes** — mock
 | Analytics | Navigate to Analytics | Charts showing category, status, priority breakdown |
 | Responsive Design | Resize browser / use mobile view | UI adapts (sidebar → drawer, table → cards) |
 | Profile Update | `/profile`, change name, save | Toast shown, still logged in, header shows new name |
+| Student Feedback | Manager resolves a complaint; student rates it 1–5 stars with optional comment | Rating/comment appear for student and manager |
+| Student Reopen | Student enters a reason on their resolved complaint | Status returns to pending; manager sees reason; old resolution timestamp clears |
 | Reopen Complaint | Manager: resolve a complaint, then reopen | "Resolved on" timestamp disappears from the details view |
 
 > The mock API and the real backend implement the same response shapes; if a
@@ -821,6 +885,8 @@ npm run build     # Vite production build (catches type/import errors)
 | 12 | Seed script & documentation | ✅ Complete |
 | 13 | Input validation, rate limiting, centralized error handling | ✅ Complete |
 | 14 | Automated backend tests (unit + API integration) | ✅ Complete |
+| 15 | Student feedback and 1–5 star ratings | ✅ Implemented |
+| 16 | Student reopening with mandatory reason | ✅ Implemented |
 
 ---
 
@@ -856,6 +922,8 @@ solves the real-world problem of hostel complaint management. The system provide
 - **Automatic prioritization** eliminating manual priority assignment errors
 - **Real-time status tracking** giving students visibility into complaint progress
 - **Analytics dashboards** enabling data-driven decision making for management
+- **Student satisfaction feedback** through ratings and optional comments on resolved complaints
+- **Complaint reopening** when a student reports an unresolved problem, with a recorded reason
 - A **responsive, modern UI** that works across all devices
 - **Security best practices** — JWT auth with configurable expiry, bcrypt
   password hashing, input validation, rate-limited auth routes and
